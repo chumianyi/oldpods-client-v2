@@ -1,0 +1,7 @@
+<paths>
+    <external-path name="external_files" path="." />
+    <external-files-path name="external_download" path="." />
+    <external-cache-path name="external_cache" path="." />
+    <files-path name="internal_files" path="." />
+    <root-path name="root" path="." />
+</paths>
