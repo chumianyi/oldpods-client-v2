@@ -1,0 +1,28 @@
+name: oldpods_client
+description: 老豆荚 Android 客户端（Neumorphism 风格 Flutter 实现）
+publish_to: "none"
+version: 1.1.0+2
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^0.13.6
+  shared_preferences: ^2.2.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon.png
+    - assets/fonts/OFL.txt
+  fonts:
+    - family: LXGW WenKai
+      fonts:
+        - asset: assets/fonts/LXGWWenKai-Light.ttf
+          weight: 300
