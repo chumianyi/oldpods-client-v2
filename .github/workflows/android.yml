@@ -1,0 +1,78 @@
+name: OldPods Release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: oldpods-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+      - name: Restore stable signing key
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          test -n "$SIGNING_KEY"
+          mkdir -p android/app/keystore
+          printf '%s' "$SIGNING_KEY" | base64 --decode > android/app/keystore/oldpods.jks
+      - name: Dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Unit and widget tests
+        run: flutter test
+      - name: Build APK on GitHub runner
+        run: flutter build apk --release
+      - name: Verify APK
+        run: |
+          mkdir -p release
+          cp build/app/outputs/flutter-apk/app-release.apk release/oldpods-1.1.0-release.apk
+          sha256sum release/*.apk > release/SHA256SUMS.txt
+          python3 - <<'PYCODE'
+          import zipfile
+          with zipfile.ZipFile('release/oldpods-1.1.0-release.apk') as z:
+              assert 'assets/flutter_assets/assets/fonts/LXGWWenKai-Light.ttf' in z.namelist()
+              assert 'assets/flutter_assets/assets/fonts/OFL.txt' in z.namelist()
+          PYCODE
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose release/*.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oldpods-release-apk
+          path: release/*
+          retention-days: 30
+          if-no-files-found: error
+      - name: Enable emulator acceleration
+        run: |
+          sudo chmod 666 /dev/kvm
+      - name: Internal browser download interaction test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: cd android && ./gradlew connectedDebugAndroidTest
+      - name: Upload Android test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-interaction-test-report
+          path: build/app/reports/androidTests/connected/
+          if-no-files-found: warn
