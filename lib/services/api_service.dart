@@ -203,17 +203,32 @@ class ApiService {
     return (await getDownloadLink(appId: appId, btnIndex: btnIndex)).url;
   }
 
-  Future<DownloadLinkData> getDownloadLink({required int appId, required int btnIndex}) async {
-    final r = await _c.post('/api/download.php', body: <String, String>{
+  Future<DownloadLinkData> getDownloadLink({required int appId, required int btnIndex, DownloadButton? button}) async {
+    var endpoint = Uri.parse('${ApiClient.baseUrl}/api/download.php');
+    if (button != null && button.getUrlApi.trim().isNotEmpty) {
+      final candidate = Uri.parse(ApiClient.baseUrl).resolve(button.getUrlApi.trim().replaceAll('&amp;', '&'));
+      final base = Uri.parse(ApiClient.baseUrl);
+      if (candidate.host.toLowerCase() != base.host.toLowerCase() || candidate.port != base.port ||
+          candidate.scheme != base.scheme || candidate.userInfo.isNotEmpty || !candidate.path.startsWith('/api/')) {
+        throw ApiException('下载授权接口不是受信任的站点接口');
+      }
+      endpoint = candidate;
+    }
+    final fields = <String, String>{
       'app_id': '$appId',
       'btn_index': '$btnIndex',
-    });
+      ...endpoint.queryParameters,
+    };
+    // Preserve the selected button's contract; do not probe other buttons or retry purchases.
+    final path = '${endpoint.path}${endpoint.hasQuery ? '?${endpoint.query}' : ''}';
+    final r = await _c.post(path, body: fields);
     if (!r.ok) throw ApiException(r.msg.isEmpty ? '获取下载地址失败' : r.msg);
-    final d = r.dataMap ?? <String, dynamic>{};
+    final outer = r.dataMap ?? <String, dynamic>{};
+    final d = outer['data'] is Map ? Map<String, dynamic>.from(outer['data'] as Map) : outer;
     final password = '${d['password'] ?? d['pwd'] ?? d['pass'] ?? d['code'] ?? d['extract_code'] ?? ''}';
     for (final key in const ['url', 'download_url', 'link', 'address', 'lanzou_url', 'file_url']) {
       final v = d[key];
-      if (v != null && v.toString().isNotEmpty) return DownloadLinkData(v.toString(), password);
+      if (v != null && v.toString().trim().isNotEmpty) return DownloadLinkData(v.toString().trim(), password);
     }
     // 兜底：data 直接是字符串
     if (r.data is String && (r.data as String).isNotEmpty) return DownloadLinkData(r.data as String);
