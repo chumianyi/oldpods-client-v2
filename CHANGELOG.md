@@ -1,3 +1,9 @@
+# OldPods 1.2.4
+
+## 修复下载落盘为 .bin 的问题（2026-10-26）
+- 根因：原生下载监听依赖 `URLUtil.guessFileName`，当下载地址最终响应无 `.apk` 后缀、且服务端未返回 `Content-Disposition: filename=*.apk`、且 `Content-Type` 为 `application/octet-stream` 时（如 `download.php?app_id=&btn=` 的 302 跳转），会兜底补 `.bin` 扩展名。
+- 新增文件名归一化：优先解析 `Content-Disposition` 中的文件名；对「二进制响应但未带可识别扩展名」的情况强制补 `.apk`（而非 `.bin`），并优先使用应用名作为干净的文件名基础。已知归档扩展名（.apk/.xapk/.apks/.zip/.obb/.jar/.tar/.gz）原样保留。
+
 # OldPods 1.2.3
 
 ## 修复下载线路串台（2026-10-26）
