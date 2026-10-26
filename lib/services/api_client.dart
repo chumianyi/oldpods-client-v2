@@ -87,13 +87,14 @@ class ApiClient {
   }
 
   Uri buildUri(String path, [Map<String, String>? params]) {
-    final query = <String, String>{};
+    final uri = Uri.parse('$baseUrl$path');
+    final query = Map<String, String>.of(uri.queryParameters);
     if (params != null) {
       params.forEach((k, v) {
         if (v.isNotEmpty) query[k] = v;
       });
     }
-    return Uri.parse('$baseUrl$path').replace(queryParameters: query.isEmpty ? null : query);
+    return uri.replace(queryParameters: query.isEmpty ? null : query);
   }
 
   Map<String, String> _headers({bool post = false}) {
