@@ -30,8 +30,9 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
   bool _descExpanded = false;
   bool _submittingComment = false;
   bool _openingDownload = false;
-  int? _openingSeq;
-  final Map<int, DownloadLinkData> _authorizedLinks = <int, DownloadLinkData>{};
+  String? _openingButton;
+  final Map<String, DownloadLinkData> _authorizedLinks = <String, DownloadLinkData>{};
+  final Map<String, int> _buttonTasks = <String, int>{};
   final TextEditingController _commentController = TextEditingController();
 
   @override
@@ -245,7 +246,8 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
       _promptLogin();
       return;
     }
-    setState(() { _openingDownload = true; _openingSeq = button.seq; });
+    final identity = button.identity;
+    setState(() { _openingDownload = true; _openingButton = identity; });
     try {
       if (button.coins > 0 && (button.payEveryTime || (button.needPay && !button.isUnlocked))) {
         final go = await confirmDialog(
@@ -256,13 +258,20 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
         if (!go) return;
       }
       if (!mounted) return;
-      var url = _api.webDownloadEntry(appId: widget.appId, btnIndex: button.seq);
-      if (_isLanzou(button)) {
-        final cached = button.payEveryTime ? null : _authorizedLinks[button.seq];
-        final data = cached ?? await _api.getDownloadLink(appId: widget.appId, btnIndex: button.seq);
-        if (!mounted) return;
-        if (!button.payEveryTime) _authorizedLinks[button.seq] = data;
-        final link = LanzouLink.parse(data.url, password: data.password);
+      final cached = button.payEveryTime ? null : _authorizedLinks[identity];
+      final data = cached ?? await _api.getDownloadLink(appId: widget.appId, btnIndex: button.seq, button: button);
+      if (!mounted) return;
+      if (!button.payEveryTime) _authorizedLinks[identity] = data;
+      var url = data.url.replaceAll('&amp;', '&').trim();
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = Uri.parse(ApiClient.baseUrl).resolve(url).toString();
+      }
+      final target = Uri.tryParse(url);
+      if (target == null || !['http', 'https'].contains(target.scheme) || target.host.isEmpty || target.userInfo.isNotEmpty) {
+        throw const FormatException('该线路没有返回可打开的 HTTP(S) 地址');
+      }
+      if (LanzouResolver.isLanzouUrl(url)) {
+        final link = LanzouLink.parse(url, password: data.password);
         if (!mounted) return;
         if (backup) {
           final controller = TextEditingController(text: link.password);
@@ -289,6 +298,8 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
           if (direct == null) showToast(context, '主解析未完成，已打开原分享页，也可返回选择备用解析');
           url = direct ?? link.url.toString();
         }
+      } else if (backup) {
+        throw const FormatException('该线路返回的不是蓝奏分享链接，请使用主下载按钮打开有效地址');
       }
       if (!mounted) return;
       final task = await DownloadManager.instance.browse(
@@ -297,12 +308,13 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
         dark: Theme.of(context).brightness == Brightness.dark,
       );
       if (!mounted || task == null) return;
+      setState(() { _buttonTasks[identity] = task.nativeId; });
       showToast(context, '已添加到下载列表');
       _showDownloadSheet();
     } catch (e) {
       if (mounted) showToast(context, '下载未开始：$e');
     } finally {
-      if (mounted) setState(() { _openingDownload = false; _openingSeq = null; });
+      if (mounted) setState(() { _openingDownload = false; _openingButton = null; });
     }
   }
 
@@ -552,7 +564,14 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
             Text('该应用暂无可下载项', style: TextStyle(color: p.subText, fontSize: 13))
           else
             ...d.downloadButtons.map((DownloadButton b) {
-              final task = DownloadManager.instance.taskOf(widget.appId);
+              DownloadTask? selectedTask;
+              final nativeId = _buttonTasks[b.identity];
+              if (nativeId != null) {
+                for (final candidate in DownloadManager.instance.tasks) {
+                  if (candidate.nativeId == nativeId) { selectedTask = candidate; break; }
+                }
+              }
+              final task = selectedTask;
               final active = task != null && task.isActive;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
@@ -564,7 +583,7 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
                       icon: Icons.download,
                       width: double.infinity,
                       primary: true,
-                      loading: _openingDownload && _openingSeq == b.seq,
+                      loading: _openingDownload && _openingButton == b.identity,
                       onPressed: _openingDownload ? null : () => _download(b),
                     ),
                     if (_isLanzou(b)) ...<Widget>[
