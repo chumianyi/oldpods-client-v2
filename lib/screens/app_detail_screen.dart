@@ -4,6 +4,8 @@ import '../models/models.dart';
 import '../services/api_client.dart';
 import '../services/api_service.dart';
 import '../services/download_manager.dart';
+import '../services/lanzou.dart';
+import '../services/lanzou_link.dart';
 import '../state/app_state.dart';
 import '../theme/neu_theme.dart';
 import '../widgets/common.dart';
@@ -27,6 +29,9 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
   String? _error;
   bool _descExpanded = false;
   bool _submittingComment = false;
+  bool _openingDownload = false;
+  int? _openingSeq;
+  final Map<int, DownloadLinkData> _authorizedLinks = <int, DownloadLinkData>{};
   final TextEditingController _commentController = TextEditingController();
 
   @override
@@ -230,24 +235,65 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
     }
   }
 
-  Future<void> _download(DownloadButton button) async {
+  bool _isLanzou(DownloadButton button) =>
+      '${button.text} ${button.kind} ${button.kindName} ${button.channel} ${button.type}'.toLowerCase().contains('lanz') ||
+      '${button.text} ${button.kindName}'.contains('蓝奏');
+
+  Future<void> _download(DownloadButton button, {bool backup = false, bool original = false}) async {
+    if (_openingDownload) return;
     if (!AppState.instance.loggedIn) {
       _promptLogin();
       return;
     }
-    if (button.needPay && !button.isUnlocked) {
-      final go = await confirmDialog(
-        context,
-        title: '付费下载',
-        content: '该下载项需要 ${button.coins} 硬币，确定继续？',
-      );
-      if (!go) return;
-    }
-    if (!mounted) return;
+    setState(() { _openingDownload = true; _openingSeq = button.seq; });
     try {
+      if (button.coins > 0 && (button.payEveryTime || (button.needPay && !button.isUnlocked))) {
+        final go = await confirmDialog(
+          context,
+          title: '付费下载',
+          content: '该下载项需要 ${button.coins} 硬币，确定继续？',
+        );
+        if (!go) return;
+      }
+      if (!mounted) return;
+      var url = _api.webDownloadEntry(appId: widget.appId, btnIndex: button.seq);
+      if (_isLanzou(button)) {
+        final cached = button.payEveryTime ? null : _authorizedLinks[button.seq];
+        final data = cached ?? await _api.getDownloadLink(appId: widget.appId, btnIndex: button.seq);
+        if (!mounted) return;
+        if (!button.payEveryTime) _authorizedLinks[button.seq] = data;
+        final link = LanzouLink.parse(data.url, password: data.password);
+        if (!mounted) return;
+        if (backup) {
+          final controller = TextEditingController(text: link.password);
+          final code = await showDialog<String>(context: context, builder: (ctx) => AlertDialog(
+            title: const Text('备用解析'),
+            content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+              const Text('将分享链接和可选提取码交给制作者的备用服务处理。此服务使用 HTTP，请仅用于公开分享文件。'),
+              const SizedBox(height: 16),
+              TextField(controller: controller, decoration: const InputDecoration(labelText: '提取码（可不填）', hintText: '无密码直接继续')),
+            ])),
+            actions: <Widget>[
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              TextButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('继续解析')),
+            ],
+          ));
+          controller.dispose();
+          if (code == null || !mounted) return;
+          url = LanzouLink(link.url, code).backupUrl.toString();
+        } else if (original) {
+          url = link.url.toString();
+        } else {
+          final direct = await LanzouResolver.instance.resolve(link.url.toString(), password: link.password);
+          if (!mounted) return;
+          if (direct == null) showToast(context, '主解析未完成，已打开原分享页，也可返回选择备用解析');
+          url = direct ?? link.url.toString();
+        }
+      }
+      if (!mounted) return;
       final task = await DownloadManager.instance.browse(
         appId: widget.appId, appTitle: _detail?.title ?? '应用',
-        url: _api.webDownloadEntry(appId: widget.appId, btnIndex: button.seq),
+        url: url,
         dark: Theme.of(context).brightness == Brightness.dark,
       );
       if (!mounted || task == null) return;
@@ -255,6 +301,8 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
       _showDownloadSheet();
     } catch (e) {
       if (mounted) showToast(context, '下载未开始：$e');
+    } finally {
+      if (mounted) setState(() { _openingDownload = false; _openingSeq = null; });
     }
   }
 
@@ -496,7 +544,9 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('下载', style: TextStyle(color: p.text, fontSize: 15, fontWeight: FontWeight.w300)),
+          Text('获取应用', style: TextStyle(color: p.text, fontSize: 18, fontWeight: FontWeight.w300)),
+          const SizedBox(height: 6),
+          Text('选择下载线路 · 确认文件后进入后台队列', style: TextStyle(color: p.subText, fontSize: 12, height: 1.5)),
           const SizedBox(height: 12),
           if (d.downloadButtons.isEmpty)
             Text('该应用暂无可下载项', style: TextStyle(color: p.subText, fontSize: 13))
@@ -514,19 +564,29 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
                       icon: Icons.download,
                       width: double.infinity,
                       primary: true,
-                      loading: active,
-                      onPressed: active ? null : () => _download(b),
+                      loading: _openingDownload && _openingSeq == b.seq,
+                      onPressed: _openingDownload ? null : () => _download(b),
                     ),
+                    if (_isLanzou(b)) ...<Widget>[
+                      const SizedBox(height: 8),
+                      Row(children: <Widget>[
+                        Expanded(child: NeuButton(text: '备用解析', icon: Icons.alt_route, compact: true,
+                          onPressed: _openingDownload ? null : () => _download(b, backup: true))),
+                        const SizedBox(width: 8),
+                        Expanded(child: NeuButton(text: '原分享页', icon: Icons.link, compact: true,
+                          onPressed: _openingDownload ? null : () => _download(b, original: true))),
+                      ]),
+                    ],
                     const SizedBox(height: 6),
-                    Row(
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
                       children: <Widget>[
                         MetaTag(text: b.kindName.isEmpty ? b.kind : b.kindName),
                         if (b.coins > 0) ...<Widget>[
-                          const SizedBox(width: 6),
                           MetaTag(text: '${b.coins} 硬币', color: p.warning),
                         ],
                         if (!b.isUnlocked) ...<Widget>[
-                          const SizedBox(width: 6),
                           MetaTag(text: '未解锁', color: p.danger),
                         ],
                       ],
