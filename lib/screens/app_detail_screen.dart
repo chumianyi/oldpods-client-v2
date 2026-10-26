@@ -4,7 +4,6 @@ import '../models/models.dart';
 import '../services/api_client.dart';
 import '../services/api_service.dart';
 import '../services/download_manager.dart';
-import '../services/lanzou.dart';
 import '../state/app_state.dart';
 import '../theme/neu_theme.dart';
 import '../widgets/common.dart';
@@ -253,22 +252,31 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
         if (!go) return;
       }
       if (!mounted) return;
-      final cached = button.payEveryTime ? null : _authorizedLinks[identity];
-      final data = cached ?? await _api.getDownloadLink(appId: widget.appId, btnIndex: button.seq, button: button);
-      if (!mounted) return;
-      if (!button.payEveryTime) _authorizedLinks[identity] = data;
-      var url = data.url.replaceAll('&amp;', '&').trim();
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        url = Uri.parse(ApiClient.baseUrl).resolve(url).toString();
+
+      // 关键修复：下载严格绑定“被点击的按钮本身”，绝不会串到别的线路。
+      // 官方按钮直接走站点真实解析入口 download.php，btn 使用按钮在下载列表中的真实下标（0 基），
+      // 点最上面的按钮就是 btn=0，点第几个就是几，与后端按钮顺序一一对应。
+      final bool hasCustomApi = button.getUrlApi.trim().isNotEmpty;
+      String url;
+      if (hasCustomApi) {
+        // 自定义受信任接口：按按钮自带地址解析，但仍严格绑定该按钮的下标。
+        final cached = button.payEveryTime ? null : _authorizedLinks[identity];
+        final data = cached ?? await _api.getDownloadLink(appId: widget.appId, btnIndex: button.listIndex, button: button);
+        if (!mounted) return;
+        if (!button.payEveryTime) _authorizedLinks[identity] = data;
+        url = data.url.replaceAll('&amp;', '&').trim();
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = Uri.parse(ApiClient.baseUrl).resolve(url).toString();
+        }
+        final target = Uri.tryParse(url);
+        if (target == null || !['http', 'https'].contains(target.scheme) || target.host.isEmpty || target.userInfo.isNotEmpty) {
+          throw const FormatException('该线路没有返回可打开的 HTTP(S) 地址');
+        }
+      } else {
+        // 官方“真实解析”入口：用按钮在列表中的真实下标，点哪个走哪个。
+        url = _api.webDownloadEntry(appId: widget.appId, btnIndex: button.listIndex);
       }
-      final target = Uri.tryParse(url);
-      if (target == null || !['http', 'https'].contains(target.scheme) || target.host.isEmpty || target.userInfo.isNotEmpty) {
-        throw const FormatException('该线路没有返回可打开的 HTTP(S) 地址');
-      }
-      if (LanzouResolver.isLanzouUrl(url)) {
-        // 真正的解析：直接交给站点官方入口 download.php 处理，不再做第三方抓取、备用解析或打开原分享页
-        url = _api.webDownloadEntry(appId: widget.appId, btnIndex: button.seq);
-      }
+
       if (!mounted) return;
       final task = await DownloadManager.instance.browse(
         appId: widget.appId, appTitle: _detail?.title ?? '应用',
@@ -278,7 +286,7 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
       if (!mounted || task == null) return;
       setState(() { _buttonTasks[identity] = task.nativeId; });
       showToast(context, '已添加到下载列表');
-      _showDownloadSheet();
+      _showDownloadSheet(task.nativeId);
     } catch (e) {
       if (mounted) showToast(context, '下载未开始：$e');
     } finally {
@@ -286,12 +294,12 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
     }
   }
 
-  void _showDownloadSheet() {
+  void _showDownloadSheet([int? nativeId]) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (BuildContext ctx) {
-        return _DownloadSheet(appId: widget.appId, title: _detail?.title ?? '应用');
+        return _DownloadSheet(appId: widget.appId, title: _detail?.title ?? '应用', nativeId: nativeId);
       },
     );
   }
@@ -911,7 +919,8 @@ class _ScreenshotViewerState extends State<_ScreenshotViewer> {
 class _DownloadSheet extends StatelessWidget {
   final int appId;
   final String title;
-  const _DownloadSheet({required this.appId, required this.title});
+  final int? nativeId;
+  const _DownloadSheet({required this.appId, required this.title, this.nativeId});
 
   @override
   Widget build(BuildContext context) {
@@ -924,7 +933,13 @@ class _DownloadSheet extends StatelessWidget {
         child: AnimatedBuilder(
           animation: DownloadManager.instance,
           builder: (BuildContext context, Widget? _) {
-            final task = DownloadManager.instance.taskOf(appId);
+            DownloadTask? task;
+            if (nativeId != null) {
+              for (final t in DownloadManager.instance.tasks) {
+                if (t.nativeId == nativeId) { task = t; break; }
+              }
+            }
+            task ??= DownloadManager.instance.taskOf(appId);
             if (task == null) {
               return Column(
                 mainAxisSize: MainAxisSize.min,
@@ -964,7 +979,7 @@ class _DownloadSheet extends StatelessWidget {
                         danger: true,
                         compact: true,
                         onPressed: () {
-                          DownloadManager.instance.cancel(appId);
+                          DownloadManager.instance.cancelTask(task!);
                           Navigator.pop(context);
                         },
                       ),
