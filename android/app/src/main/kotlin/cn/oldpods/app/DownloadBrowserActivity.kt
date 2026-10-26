@@ -66,7 +66,8 @@ class DownloadBrowserActivity : Activity() {
             allowFileAccess = false
             allowContentAccess = false
             javaScriptCanOpenWindowsAutomatically = false
-            setSupportMultipleWindows(true)
+            // Keep target=_blank in this WebView so the download listener is retained.
+            setSupportMultipleWindows(false)
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             userAgentString = intent.getStringExtra("userAgent") ?: userAgentString
         }
