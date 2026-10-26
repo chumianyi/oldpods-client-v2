@@ -1,5 +1,11 @@
 # 老豆荚 OldPods 客户端
 
+## 本次完整源码交付：1.2.0+3
+
+包含完整 Flutter 源码、Android 原生下载实现、字体及许可证、既有测试源文件和云端构建配置，不是补丁包。已修改签到榜时间/天数分离、蓝奏主解析与备用入口、取消启动更新弹窗，并完善排行榜、下载区域和共用按钮状态。账号、收藏、评论、消息、签到、积分商店等既有功能保留。
+
+**本轮仅源码交付，没有运行测试、分析或编译，也没有上传仓库。** 下方构建章节是接收方后续操作说明，不代表本次已构建。签名私钥和 Token 不包含在 ZIP 中；若自行云端构建需配置自己的签名 Secrets。备用解析使用指定 HTTP 服务，只用于公开分享链接；服务在线可用性和真实网盘下载尚未运行验证。详见 CHANGELOG.md。
+
 基于 Flutter 的「老豆荚」（oldpods.cn）第三方 Android 客户端，采用 **暖白 / 墨绿卡片设计与霞鹜文楷细体**，最低支持 **Android 7.0（API 24）**，通过 GitHub Actions 自动构建可安装的签名 Release APK。
 
 ## 下载安装
@@ -38,7 +44,7 @@
 
 推送代码到 `main` 分支或手动触发 Workflow 即可自动构建：
 
-1. 配置仓库 Secrets：`SIGNING_KEY`（JKS Base64，alias 为 `oldpods`）、`KEYSTORE_PASSWORD`。固定密钥已经为本次构建仓库配置。
+1. 配置自己的仓库 Secrets：`SIGNING_KEY`（JKS Base64，alias 为 `oldpods`）、`KEYSTORE_PASSWORD`。源码包不含这些秘密。
 2. 云端安装 Flutter 3.24.5 与 Java 17。
 3. 云端获取依赖，执行 Dart 分析、单元与 Widget 测试。
 4. 云端构建并验签 Release APK，检查字体与许可证资源。
