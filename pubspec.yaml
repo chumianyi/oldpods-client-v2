@@ -1,7 +1,7 @@
 name: oldpods_client
 description: 老豆荚 Android 客户端（暖白墨绿设计与文楷细体）
 publish_to: "none"
-version: 1.2.1+4
+version: 1.2.2+5
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
