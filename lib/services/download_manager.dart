@@ -101,6 +101,7 @@ class DownloadManager extends ChangeNotifier with WidgetsBindingObserver {
       final data = await DeviceBridge.instance.openDownloadBrowser({
         'url': url, 'dark': dark, 'userAgent': ApiClient.webUserAgent,
         'cookie': firstParty ? api.sessionCookie : '', 'apiKey': firstParty ? (api.apiKey ?? '') : '',
+        'appTitle': appTitle,
       });
       if (data == null) return null;
       final request = DownloadRequest.fromMap(data);
