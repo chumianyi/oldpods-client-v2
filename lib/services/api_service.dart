@@ -3,6 +3,12 @@ import 'package:http/http.dart' as http;
 import '../models/models.dart';
 import 'api_client.dart';
 
+class DownloadLinkData {
+  final String url;
+  final String password;
+  const DownloadLinkData(this.url, [this.password = '']);
+}
+
 /// 老豆荚全量接口封装（对应《接口规范标准》全部端点）。
 class ApiService {
   ApiService._();
@@ -194,18 +200,23 @@ class ApiService {
 
   /// POST /api/download.php 获取下载地址
   Future<String> getDownloadUrl({required int appId, required int btnIndex}) async {
+    return (await getDownloadLink(appId: appId, btnIndex: btnIndex)).url;
+  }
+
+  Future<DownloadLinkData> getDownloadLink({required int appId, required int btnIndex}) async {
     final r = await _c.post('/api/download.php', body: <String, String>{
       'app_id': '$appId',
       'btn_index': '$btnIndex',
     });
     if (!r.ok) throw ApiException(r.msg.isEmpty ? '获取下载地址失败' : r.msg);
     final d = r.dataMap ?? <String, dynamic>{};
+    final password = '${d['password'] ?? d['pwd'] ?? d['pass'] ?? d['code'] ?? d['extract_code'] ?? ''}';
     for (final key in const ['url', 'download_url', 'link', 'address', 'lanzou_url', 'file_url']) {
       final v = d[key];
-      if (v != null && v.toString().isNotEmpty) return v.toString();
+      if (v != null && v.toString().isNotEmpty) return DownloadLinkData(v.toString(), password);
     }
     // 兜底：data 直接是字符串
-    if (r.data is String && (r.data as String).isNotEmpty) return r.data as String;
+    if (r.data is String && (r.data as String).isNotEmpty) return DownloadLinkData(r.data as String);
     throw ApiException('未获取到下载地址');
   }
 
