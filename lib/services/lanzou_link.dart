@@ -29,9 +29,4 @@ class LanzouLink {
     if (code.isEmpty) code = uri.queryParameters['pwd'] ?? uri.queryParameters['password'] ?? '';
     return LanzouLink(uri, code);
   }
-
-  Uri get backupUrl => Uri(
-    scheme: 'http', host: '103.236.99.177', port: 24512, path: '/iosipa/app',
-    queryParameters: <String, String>{'lanzou_url': '${url.toString()}${password.isEmpty ? '' : '_$password'}'},
-  );
 }
