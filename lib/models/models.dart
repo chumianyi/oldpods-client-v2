@@ -397,6 +397,8 @@ class Comment {
         frameX: _d(j['frame_x']),
         frameY: _d(j['frame_y']),
       );
+
+
 }
 
 class CommentList {
@@ -616,6 +618,7 @@ class LeaderboardItem {
   final String avatar;
   final int streak;
   final int score;
+  final String checkinTime;
   final int rank;
   final String frame;
   final double frameW;
@@ -626,6 +629,7 @@ class LeaderboardItem {
     required this.avatar,
     required this.streak,
     required this.score,
+    this.checkinTime = '',
     required this.rank,
     required this.frame,
     required this.frameW,
@@ -636,14 +640,41 @@ class LeaderboardItem {
   factory LeaderboardItem.fromJson(Map<String, dynamic> j) => LeaderboardItem(
         nickname: _str(j['nickname']),
         avatar: _str(j['avatar']),
-        streak: _i(j['streak']),
+        streak: _i(j['streak'], _i(j['continuous_days'], _i(j['streak_days']))),
         score: _i(j['score'], _i(j['checkins'])),
+        checkinTime: _checkinTime(j),
         rank: _i(j['rank']),
         frame: _str(j['frame']),
         frameW: _d(j['frame_w'], 100),
         frameX: _d(j['frame_x']),
         frameY: _d(j['frame_y']),
       );
+  String get timeLabel => checkinTime.isEmpty ? '时间未提供' : checkinTime;
+
+  static String _checkinTime(Map<String, dynamic> j) {
+    for (final key in const ['checkin_time', 'checkin_at', 'checked_in_at',
+      'checkin_time_cst', 'created_at_cst', 'check_time', 'sign_time', 'time', 'created_at']) {
+      final text = _str(j[key]).trim();
+      final clock = RegExp(r'(?:^|[T\s])(\d{1,2}):(\d{2})(?::(\d{2}))?(?:$|[.Z+\-\s])').firstMatch(text);
+      if (clock != null) {
+        final hour = int.parse(clock[1]!);
+        final minute = int.parse(clock[2]!);
+        final second = int.parse(clock[3] ?? '0');
+        if (hour < 24 && minute < 60 && second < 60) {
+          return '${hour.toString().padLeft(2, '0')}:${clock[2]}${clock[3] == null ? '' : ':${clock[3]}'}';
+        }
+      }
+      if (RegExp(r'^\d{10}(?:\d{3})?$').hasMatch(text)) {
+        final epoch = int.tryParse(text);
+        if (epoch != null) {
+          final dt = DateTime.fromMillisecondsSinceEpoch(text.length == 10 ? epoch * 1000 : epoch,
+            isUtc: true).add(const Duration(hours: 8));
+          return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
+        }
+      }
+    }
+    return '';
+  }
 }
 
 // ---------------- 公告 / 协议 ----------------
