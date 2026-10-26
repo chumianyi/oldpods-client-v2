@@ -30,7 +30,7 @@ class MainActivity : FlutterActivity() {
                             pendingBrowser = result
                             try {
                                 startActivityForResult(Intent(this, DownloadBrowserActivity::class.java).apply {
-                                    for (key in listOf("url", "cookie", "apiKey", "userAgent")) {
+                                    for (key in listOf("url", "cookie", "apiKey", "userAgent", "appTitle")) {
                                         putExtra(key, call.argument<String>(key))
                                     }
                                     putExtra("dark", call.argument<Boolean>("dark") ?: false)
