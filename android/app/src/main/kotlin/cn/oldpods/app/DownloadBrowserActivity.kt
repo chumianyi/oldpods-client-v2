@@ -125,7 +125,8 @@ class DownloadBrowserActivity : Activity() {
                 return@setDownloadListener
             }
             if (dialog?.isShowing == true || isFinishing) return@setDownloadListener
-            val name = NativeDownloads.safeName(URLUtil.guessFileName(url, disposition, mime))
+            val appTitle = intent.getStringExtra("appTitle")
+            val name = NativeDownloads.safeName(NativeDownloads.normalizeName(url, disposition, mime, appTitle))
             val size = if (length > 0) "%.1f MB".format(length / 1048576.0) else "由下载服务器提供"
             val source = Uri.parse(url).host ?: "未知来源"
             val text = TextView(this).apply {
