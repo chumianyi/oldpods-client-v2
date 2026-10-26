@@ -5,7 +5,6 @@ import '../services/api_client.dart';
 import '../services/api_service.dart';
 import '../services/download_manager.dart';
 import '../services/lanzou.dart';
-import '../services/lanzou_link.dart';
 import '../state/app_state.dart';
 import '../theme/neu_theme.dart';
 import '../widgets/common.dart';
@@ -236,11 +235,7 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
     }
   }
 
-  bool _isLanzou(DownloadButton button) =>
-      '${button.text} ${button.kind} ${button.kindName} ${button.channel} ${button.type}'.toLowerCase().contains('lanz') ||
-      '${button.text} ${button.kindName}'.contains('蓝奏');
-
-  Future<void> _download(DownloadButton button, {bool backup = false, bool original = false}) async {
+  Future<void> _download(DownloadButton button) async {
     if (_openingDownload) return;
     if (!AppState.instance.loggedIn) {
       _promptLogin();
@@ -271,35 +266,8 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
         throw const FormatException('该线路没有返回可打开的 HTTP(S) 地址');
       }
       if (LanzouResolver.isLanzouUrl(url)) {
-        final link = LanzouLink.parse(url, password: data.password);
-        if (!mounted) return;
-        if (backup) {
-          final controller = TextEditingController(text: link.password);
-          final code = await showDialog<String>(context: context, builder: (ctx) => AlertDialog(
-            title: const Text('备用解析'),
-            content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-              const Text('将分享链接和可选提取码交给制作者的备用服务处理。此服务使用 HTTP，请仅用于公开分享文件。'),
-              const SizedBox(height: 16),
-              TextField(controller: controller, decoration: const InputDecoration(labelText: '提取码（可不填）', hintText: '无密码直接继续')),
-            ])),
-            actions: <Widget>[
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-              TextButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('继续解析')),
-            ],
-          ));
-          controller.dispose();
-          if (code == null || !mounted) return;
-          url = LanzouLink(link.url, code).backupUrl.toString();
-        } else if (original) {
-          url = link.url.toString();
-        } else {
-          final direct = await LanzouResolver.instance.resolve(link.url.toString(), password: link.password);
-          if (!mounted) return;
-          if (direct == null) showToast(context, '主解析未完成，已打开原分享页，也可返回选择备用解析');
-          url = direct ?? link.url.toString();
-        }
-      } else if (backup) {
-        throw const FormatException('该线路返回的不是蓝奏分享链接，请使用主下载按钮打开有效地址');
+        // 真正的解析：直接交给站点官方入口 download.php 处理，不再做第三方抓取、备用解析或打开原分享页
+        url = _api.webDownloadEntry(appId: widget.appId, btnIndex: button.seq);
       }
       if (!mounted) return;
       final task = await DownloadManager.instance.browse(
@@ -586,16 +554,6 @@ class _AppDetailScreenState extends State<AppDetailScreen> with SingleTickerProv
                       loading: _openingDownload && _openingButton == b.identity,
                       onPressed: _openingDownload ? null : () => _download(b),
                     ),
-                    if (_isLanzou(b)) ...<Widget>[
-                      const SizedBox(height: 8),
-                      Row(children: <Widget>[
-                        Expanded(child: NeuButton(text: '备用解析', icon: Icons.alt_route, compact: true,
-                          onPressed: _openingDownload ? null : () => _download(b, backup: true))),
-                        const SizedBox(width: 8),
-                        Expanded(child: NeuButton(text: '原分享页', icon: Icons.link, compact: true,
-                          onPressed: _openingDownload ? null : () => _download(b, original: true))),
-                      ]),
-                    ],
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 6,
