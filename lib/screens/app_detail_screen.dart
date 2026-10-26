@@ -933,13 +933,15 @@ class _DownloadSheet extends StatelessWidget {
         child: AnimatedBuilder(
           animation: DownloadManager.instance,
           builder: (BuildContext context, Widget? _) {
-            DownloadTask? task;
-            if (nativeId != null) {
-              for (final t in DownloadManager.instance.tasks) {
-                if (t.nativeId == nativeId) { task = t; break; }
+            DownloadTask? resolveTask() {
+              if (nativeId != null) {
+                for (final t in DownloadManager.instance.tasks) {
+                  if (t.nativeId == nativeId) return t;
+                }
               }
+              return DownloadManager.instance.taskOf(appId);
             }
-            task ??= DownloadManager.instance.taskOf(appId);
+            final DownloadTask? task = resolveTask();
             if (task == null) {
               return Column(
                 mainAxisSize: MainAxisSize.min,
