@@ -125,8 +125,16 @@ class NeuButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = NeuPalette.of(context);
     final bg = color ?? (primary ? p.accent : (danger ? p.danger : p.surface));
-    final fg = (primary || danger) ? p.onAccent : p.text;
-    return NeuBox(
+    final fg = danger ? p.onAccent : (primary ? (Theme.of(context).brightness == Brightness.dark ? p.bg : p.onAccent) : p.text);
+    final enabled = onPressed != null && !loading;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: loading ? '${text ?? ''}，处理中' : text,
+      child: AnimatedOpacity(
+      opacity: !enabled && !loading ? 0.5 : 1,
+      duration: const Duration(milliseconds: 160),
+      child: NeuBox(
       onTap: loading ? null : onPressed,
       radius: compact ? 14 : 18,
       color: bg,
@@ -147,7 +155,7 @@ class NeuButton extends StatelessWidget {
               textAlign: TextAlign.center, style: TextStyle(color: fg, fontSize: compact ? 13 : 15, fontWeight: FontWeight.w300))),
         ],
       ),
-    );
+    )));
   }
 }
 
