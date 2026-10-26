@@ -8,7 +8,7 @@ class LanzouLink {
     final match = RegExp(r'https?://[^\s]+').firstMatch(value);
     final uri = Uri.tryParse(match?.group(0) ?? value);
     if (uri == null) return false;
-    return RegExp(r'(^|\.)(?:lanzou[a-z]*|lanzn|lanzv|lanzo)[.](?:com|cn)$', caseSensitive: false).hasMatch(uri.host);
+    return RegExp(r'(^|\.)(?:lanzou[a-z]*|lanz[a-z]|lanzo)[.](?:com|cn)$', caseSensitive: false).hasMatch(uri.host);
   }
 
   factory LanzouLink.parse(String value, {String password = ''}) {
