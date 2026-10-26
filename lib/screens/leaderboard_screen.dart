@@ -20,6 +20,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   List<LeaderboardItem> _items = <LeaderboardItem>[];
   bool _loading = true;
   String? _error;
+  int _requestId = 0;
 
   @override
   void initState() {
@@ -28,19 +29,21 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   }
 
   Future<void> _load() async {
+    final requestId = ++_requestId;
+    final type = _type;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final items = await _api.leaderboard(_type);
-      if (!mounted) return;
+      final items = await _api.leaderboard(type);
+      if (!mounted || requestId != _requestId) return;
       setState(() {
         _items = items;
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestId != _requestId) return;
       setState(() {
         _error = e.toString();
         _loading = false;
@@ -59,13 +62,34 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       body: Column(
         children: <Widget>[
           Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: NeuBox(
+              radius: 22,
+              padding: const EdgeInsets.all(18),
+              child: Row(children: <Widget>[
+                Icon(_type == 'today' ? Icons.schedule : Icons.local_fire_department_outlined, color: p.accent, size: 32),
+                const SizedBox(width: 14),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                  Text(_type == 'today' ? '每日签到榜' : '连续签到榜', style: TextStyle(color: p.text, fontSize: 20)),
+                  const SizedBox(height: 6),
+                  Text(_type == 'today' ? '记录今天的签到时刻，不与连续天数混用' : '每一天的坚持，都值得被看见', style: TextStyle(color: p.subText, fontSize: 12, height: 1.5)),
+                ])),
+              ]),
+            ),
+          ),
+          if (_error != null && _items.isNotEmpty)
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: TextButton.icon(
+              onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('刷新失败，点击重试'))),
+          if (_loading && _items.isNotEmpty) const LinearProgressIndicator(minHeight: 2),
+          Padding(
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
             child: NeuSegmented<String>(
               values: const <String>['streak', 'today'],
               labels: const <String>['连续签到', '今日签到'],
               value: _type,
               onChanged: (String v) {
-                setState(() => _type = v);
+                if (_type == v) return;
+                setState(() { _type = v; _items = <LeaderboardItem>[]; });
                 _load();
               },
             ),
@@ -86,7 +110,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                               itemCount: _items.length,
                               itemBuilder: (BuildContext context, int i) {
                                 final item = _items[i];
-                                return _RankRow(item: item, index: i);
+                                return _RankRow(item: item, index: i, today: _type == 'today');
                               },
                             ))),
             ),
@@ -100,7 +124,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
 class _RankRow extends StatelessWidget {
   final LeaderboardItem item;
   final int index;
-  const _RankRow({required this.item, required this.index});
+  final bool today;
+  const _RankRow({required this.item, required this.index, required this.today});
 
   @override
   Widget build(BuildContext context) {
@@ -154,10 +179,10 @@ class _RankRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: <Widget>[
                 Text(
-                  '${item.streak > 0 ? item.streak : item.score} 天',
+                  today ? item.timeLabel : '${item.streak > 0 ? item.streak : item.score} 天',
                   style: TextStyle(color: p.accent, fontSize: 14, fontWeight: FontWeight.w300),
                 ),
-                Text('连续签到', style: TextStyle(color: p.subText, fontSize: 10)),
+                Text(today ? '签到时间' : '连续签到', style: TextStyle(color: p.subText, fontSize: 10)),
               ],
             ),
           ],
