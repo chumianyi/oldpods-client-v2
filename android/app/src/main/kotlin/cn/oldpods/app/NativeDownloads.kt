@@ -4,6 +4,7 @@ import android.app.DownloadManager
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
+import android.webkit.URLUtil
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -121,9 +122,53 @@ class NativeDownloads(private val context: Context) {
     }
 
     companion object {
+        private val ARCHIVE_EXT = setOf(".apk", ".xapk", ".apks", ".zip", ".obb", ".jar", ".tar", ".gz")
+
         fun safeName(name: String): String {
             val result = name.replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_").trim().trim('.')
             return result.take(140).ifEmpty { "download.bin" }
+        }
+
+        /** Pull a filename out of a Content-Disposition header (handles both filename*= and filename=). */
+        fun fileNameFromDisposition(disposition: String?): String? {
+            if (disposition.isNullOrBlank()) return null
+            var m = Regex("""filename\*=(?:UTF-8'')?([^;]+)""", RegexOption.IGNORE_CASE).find(disposition)
+            if (m != null) {
+                val v = m.groupValues[1].trim().trim('"').replace('+', ' ').trim()
+                if (v.isNotEmpty()) return Uri.decode(v)
+            }
+            m = Regex("""filename=("?)([^";]+)\1""", RegexOption.IGNORE_CASE).find(disposition)
+            if (m != null) {
+                val v = m.groupValues[2].trim().trim('"')
+                if (v.isNotEmpty()) return v
+            }
+            return null
+        }
+
+        /**
+         * Derive a sensible file name for a download started from the in-app browser.
+         *
+         * The WebView hands us (url, contentDisposition, mimeType). When the final response has no
+         * usable extension and no Content-Disposition filename (e.g. a download.php redirect served
+         * as application/octet-stream) URLUtil.guessFileName falls back to ".bin". Every download
+         * here is an APK, so instead we force ".apk" and prefer the app title as a clean base name.
+         * Known archive extensions are kept as-is.
+         */
+        fun normalizeName(url: String, disposition: String?, mime: String?, fallbackTitle: String?): String {
+            val fromDisp = fileNameFromDisposition(disposition)
+            val guessed = fromDisp ?: URLUtil.guessFileName(url, disposition, mime)
+            val ext = guessed.substringAfterLast('.').lowercase()
+            if (ARCHIVE_EXT.any { it == ".$ext" }) return guessed
+            val m = (mime ?: "").lowercase()
+            val isBinary = m.isEmpty() || m == "application/octet-stream" ||
+                    m == "application/vnd.android.package-archive" || m == "*/*"
+            if (!isBinary) return guessed
+            val title = fallbackTitle?.trim().takeIf { !it.isNullOrEmpty() }
+            val base = if (title != null) safeName(title) else {
+                val dot = guessed.lastIndexOf('.')
+                safeName(if (dot > 0) guessed.substring(0, dot) else guessed)
+            }
+            return "${if (base.isEmpty()) "app" else base}.apk"
         }
     }
 }
