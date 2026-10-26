@@ -187,6 +187,8 @@ class DownloadButton {
   final bool isUnlocked;
   final bool needPay;
   final String getUrlApi;
+  final int listIndex;
+  String get identity => '$listIndex|$seq|$kind|$channel|$getUrlApi';
   DownloadButton({
     required this.text,
     required this.type,
@@ -201,15 +203,16 @@ class DownloadButton {
     required this.isUnlocked,
     required this.needPay,
     required this.getUrlApi,
+    this.listIndex = 0,
   });
 
-  factory DownloadButton.fromJson(Map<String, dynamic> j) => DownloadButton(
+  factory DownloadButton.fromJson(Map<String, dynamic> j, {int listIndex = 0}) => DownloadButton(
         text: _str(j['text']),
         type: _str(j['type']),
         coins: _i(j['coins']),
         payEveryTime: _b(j['pay_every_time']),
         kind: _str(j['kind']),
-        seq: _i(j['seq'], 1),
+        seq: _buttonSeq(j, listIndex),
         kindName: _str(j['kind_name']),
         channel: _str(j['channel']),
         priceTag: _str(j['price_tag']),
@@ -217,7 +220,22 @@ class DownloadButton {
         isUnlocked: _bv(j['is_unlocked'], true),
         needPay: _b(j['need_pay']),
         getUrlApi: _str(j['get_url_api']),
+        listIndex: listIndex,
       );
+
+  static int _buttonSeq(Map<String, dynamic> j, int index) {
+    final query = Uri.tryParse(_str(j['get_url_api']))?.queryParameters ?? <String, String>{};
+    for (final value in [query['btn_index'], query['btn'], query['seq'], j['seq'], j['btn_index'], j['btn']]) {
+      final parsed = int.tryParse('$value');
+      if (parsed != null && parsed >= 0) return parsed;
+    }
+    return index + 1;
+  }
+
+  static List<DownloadButton> parseButtons(dynamic value) {
+    final list = _mapList(value);
+    return List<DownloadButton>.generate(list.length, (index) => DownloadButton.fromJson(list[index], listIndex: index));
+  }
 }
 
 class Submitter {
@@ -315,7 +333,7 @@ class AppDetail {
         systemRequirements: _str(j['system_requirements']),
         fileSize: _str(j['file_size']),
         architecture: _str(j['architecture']),
-        downloadButtons: _mapList(j['download_buttons']).map(DownloadButton.fromJson).toList(),
+        downloadButtons: DownloadButton.parseButtons(j['download_buttons']),
         screenshots: (j['screenshots'] is List ? j['screenshots'] as List : const []).map((e) => e.toString()).toList(),
         downloads: _i(j['downloads']),
         ratingAvg: _d(j['rating_avg']),
